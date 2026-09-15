@@ -1,0 +1,20 @@
+name: Deploy to prod
+
+on:
+  push:
+    branches: [prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            bash /home/dbadev01/dba-prodv3/src/alld-backend/deployment/scripts/ci-deploy.sh prod /home/dbadev01/dba-prodv3 6704
