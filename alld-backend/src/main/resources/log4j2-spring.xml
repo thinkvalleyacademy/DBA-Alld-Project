@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Properties>
+        <!-- Use env: syntax for early resolution before Spring initializes -->
+        <Property name="LOG_DIR">${env:APP_LOG_DIR:-${env:LOG_PATH:-/app/logs}}</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSSXXX} %-5level [%t] %logger{36} - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+
+        <RollingFile name="AppFile"
+                     fileName="${LOG_DIR}/application.log"
+                     filePattern="${LOG_DIR}/archive/application-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="50 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="500">
+                <Delete basePath="${LOG_DIR}/archive" maxDepth="1">
+                    <IfFileName glob="application-*.log.gz"/>
+                    <IfLastModified age="60d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.springframework.web.servlet.DispatcherServlet" level="warn"/>
+        <Logger name="org.springframework.web.servlet" level="warn"/>
+        <Logger name="org.apache.catalina" level="warn"/>
+        <Logger name="org.apache.coyote" level="warn"/>
+        <Logger name="org.hibernate.SQL" level="warn"/>
+        <Logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="warn"/>
+        <Logger name="com.dba.alld" level="info"/>
+
+        <SpringProfile name="prod,preprod">
+            <Root level="info">
+                <AppenderRef ref="Console"/>
+                <AppenderRef ref="AppFile"/>
+            </Root>
+        </SpringProfile>
+
+        <SpringProfile name="dev,local,local_mac">
+            <Root level="info">
+                <AppenderRef ref="Console"/>
+                <AppenderRef ref="AppFile"/>
+            </Root>
+        </SpringProfile>
+
+        <SpringProfile name="!prod &amp; !preprod &amp; !dev &amp; !local &amp; !local_mac">
+            <Root level="info">
+                <AppenderRef ref="Console"/>
+                <AppenderRef ref="AppFile"/>
+            </Root>
+        </SpringProfile>
+    </Loggers>
+</Configuration>

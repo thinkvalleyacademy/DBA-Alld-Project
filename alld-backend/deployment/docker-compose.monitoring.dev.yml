@@ -1,0 +1,62 @@
+name: dba-dev-monitoring
+
+services:
+  # ===========================================
+  # PROMETHEUS - DEV Environment
+  # ===========================================
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: dba-dev-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/dev/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/dev/prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "4090:9090"
+    networks:
+      - dba-dev-internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    user: "0:0"
+
+  # ===========================================
+  # GRAFANA - DEV Dashboard
+  # ===========================================
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: dba-dev-grafana
+    restart: unless-stopped
+    user: "0:0"
+    volumes:
+      - ./monitoring/dev/grafana-data:/var/lib/grafana
+      - ./monitoring/dev/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/dev/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_SERVER_ROOT_URL: http://100.101.103.63:4001
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+    ports:
+      - "4001:3000"
+    networks:
+      - dba-dev-internal
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q '\"database\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  dba-dev-internal:
+    external: true

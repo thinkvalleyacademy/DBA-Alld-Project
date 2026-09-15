@@ -1,0 +1,44 @@
+<testsuites id="" name="" tests="12" failures="0" skipped="0" errors="0" time="32.639776000000005">
+<testsuite name="smoke/homepage.spec.js" timestamp="2026-03-03T10:10:58.228Z" hostname="chromium" tests="4" failures="0" skipped="0" time="12.016" errors="0">
+<testcase name="Smoke Tests › should load the application homepage" classname="smoke/homepage.spec.js" time="2.907">
+</testcase>
+<testcase name="Smoke Tests › should display the main navigation" classname="smoke/homepage.spec.js" time="2.934">
+<system-out>
+<![CDATA[Navigation element not found - checking for alternative selectors
+]]>
+</system-out>
+</testcase>
+<testcase name="Smoke Tests › should load without critical JavaScript errors" classname="smoke/homepage.spec.js" time="3.314">
+</testcase>
+<testcase name="Smoke Tests › should have valid document structure" classname="smoke/homepage.spec.js" time="2.861">
+</testcase>
+</testsuite>
+<testsuite name="smoke/homepage.spec.js" timestamp="2026-03-03T10:10:58.228Z" hostname="firefox" tests="4" failures="0" skipped="0" time="23.26" errors="0">
+<testcase name="Smoke Tests › should load the application homepage" classname="smoke/homepage.spec.js" time="5.626">
+</testcase>
+<testcase name="Smoke Tests › should display the main navigation" classname="smoke/homepage.spec.js" time="6.065">
+<system-out>
+<![CDATA[Navigation element not found - checking for alternative selectors
+]]>
+</system-out>
+</testcase>
+<testcase name="Smoke Tests › should load without critical JavaScript errors" classname="smoke/homepage.spec.js" time="6.603">
+</testcase>
+<testcase name="Smoke Tests › should have valid document structure" classname="smoke/homepage.spec.js" time="4.966">
+</testcase>
+</testsuite>
+<testsuite name="smoke/homepage.spec.js" timestamp="2026-03-03T10:10:58.228Z" hostname="webkit" tests="4" failures="0" skipped="0" time="22.627" errors="0">
+<testcase name="Smoke Tests › should load the application homepage" classname="smoke/homepage.spec.js" time="5.457">
+</testcase>
+<testcase name="Smoke Tests › should display the main navigation" classname="smoke/homepage.spec.js" time="5.696">
+<system-out>
+<![CDATA[Navigation element not found - checking for alternative selectors
+]]>
+</system-out>
+</testcase>
+<testcase name="Smoke Tests › should load without critical JavaScript errors" classname="smoke/homepage.spec.js" time="6.005">
+</testcase>
+<testcase name="Smoke Tests › should have valid document structure" classname="smoke/homepage.spec.js" time="5.469">
+</testcase>
+</testsuite>
+</testsuites>

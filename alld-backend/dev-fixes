@@ -1,0 +1,89 @@
+Reciept coming 3 times.
+
+{
+    "status": 200,
+    "message": "Member details with receipt history",
+    "data": {
+        "receipts": [
+            {
+                "id": 47455,
+                "memberId": "12990",
+                "amount": 575.00,
+                "txnType": "REGISTRATION",
+                "txnDate": "2026-02-25T18:40:36",
+                "noOfMonth": 1,
+                "createdBy": "7388881114",
+                "createdDate": "2026-02-25T18:40:36",
+                "status": "ACTIVE",
+                "orderId": 2026022519780261,
+                "expiryDate": "2026-03-02"
+            },
+            {
+                "id": 47406,
+                "memberId": "12990",
+                "amount": 300.00,
+                "txnType": "SUBSCRIPTION",
+                "txnDate": "2026-02-11T15:42:39",
+                "noOfMonth": 12,
+                "createdBy": "6392521974",
+                "createdDate": "2026-02-11T15:42:39",
+                "status": "ACTIVE",
+                "orderId": 202602111521249,
+                "expiryDate": "2027-02-28"
+            },
+            {
+                "id": 47405,
+                "memberId": "12990",
+                "amount": 575.00,
+                "txnType": "REGISTRATION",
+                "txnDate": "2026-02-11T15:42:11",
+                "noOfMonth": 0,
+                "createdBy": "6392521974",
+                "createdDate": "2026-02-11T15:42:11",
+                "status": "ACTIVE",
+                "orderId": 2026021180596365,
+                "expiryDate": "2026-02-28"
+            }
+        ],
+        "member": {
+            "id": 13015,
+            "memberId": "POR00012990",
+            "memberType": "New",
+            "name": "Mukesh Kumar dev",
+            "gender": "Male",
+            "relation": "Son of",
+            "guardianName": "Prem",
+            "dob": "1992-10-12",
+            "bloodGroup": "A+",
+            "registrationType": "cop",
+            "registrationNo": "REG154",
+            "enNo": "4444",
+            "address": "Shantipuram",
+            "city": "prayagraj",
+            "zip": "122211",
+            "state": "Uttar Pradesh",
+            "ksAddress": "Allapur",
+            "mobile": "8081608921",
+            "email": "mukesh.it14@gmail.com",
+            "nomineeName": "Test",
+            "nomineeMobile": "8081608921",
+            "membershipDate": "2026-02-25",
+            "expiryDate": "2026-02-28",
+            "bcOfUpType": "Type1",
+            "bcOfUpPhoto": "upload/bc_of_up_photo/1772025035342-bc.pdf",
+            "voter": "yes",
+            "affidavite": "upload/affidavit/1772025035687-affidavit.pdf",
+            "photo": "upload/photos/1772025034771-photo.png",
+            "qrcode": "upload/qrcode/1772025036331-qrcode.png",
+            "qrcodeDigit": "123456",
+            "gmLmMemberType": 1,
+            "createdDate": "2026-02-25T18:40:35",
+            "createdBy": "7388881114",
+            "updatedDate": null,
+            "updatedBy": null,
+            "status": "ACTIVE",
+            "ewalletBalance": 575.00,
+            "designation": "Member"
+        }
+    }
+}

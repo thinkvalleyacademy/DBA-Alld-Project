@@ -1,0 +1,442 @@
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    timeout(time: 45, unit: 'MINUTES')
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    // Deployment Paths
+    DEPLOY_ROOT = '/home/dbadev01/app-deployment-prod'
+    BACKEND_DIR = '/home/dbadev01/app-deployment-prod/backend'
+    COMPOSE_FILE = '/home/dbadev01/app-deployment-prod/docker-compose.backend.prod.yml'
+    ENV_FILE = '/home/dbadev01/app-deployment-prod/.env'
+
+    // Docker Configuration
+    IMAGE_NAME = 'dba/backend'
+    CONTAINER_NAME = 'dba-prod-backend'
+    DB_CONTAINER_NAME = 'dba-prod-db'
+
+    // Network
+    TRAEFIK_NETWORK = 'traefik-public'
+    INTERNAL_NETWORK = 'dba-prod-internal'
+  }
+
+  parameters {
+    // Build Parameters
+    string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional tag override; default BUILD_NUMBER')
+    booleanParam(name: 'FORCE_IMAGE_BUILD', defaultValue: false, description: 'Force Docker image rebuild')
+    booleanParam(name: 'RUN_UNIT_TESTS', defaultValue: true, description: 'Run unit tests before deploy')
+
+    // Deployment Parameters
+    string(name: 'COMPOSE_PROJECT', defaultValue: 'dba-prod-backend', description: 'Docker compose project name')
+    string(name: 'BACKEND_HOST', defaultValue: 'api.alld.example.com', description: 'Host/domain for Traefik route')
+    string(name: 'TRAEFIK_ENTRYPOINT', defaultValue: 'websecure', description: 'Traefik entrypoint name')
+    choice(name: 'TRAEFIK_TLS', choices: ['true', 'false'], description: 'Enable TLS at Traefik')
+    string(name: 'BACKEND_PORT', defaultValue: '5281', description: 'Host port for backend')
+
+    // Database Parameters
+    string(name: 'MYSQL_DATABASE', defaultValue: 'dba', description: 'MySQL database name')
+    string(name: 'MYSQL_USER', defaultValue: 'rwroot', description: 'MySQL application user')
+    booleanParam(name: 'RECREATE_DB', defaultValue: false, description: 'Recreate DB container')
+    booleanParam(name: 'BACKUP_BEFORE_DEPLOY', defaultValue: true, description: 'Create DB backup before deploy')
+
+    // Credentials (Jenkins Secret Text)
+    string(name: 'MYSQL_ROOT_PASSWORD_CRED_ID', defaultValue: 'dba-prod-mysql-root-password', description: 'Jenkins Secret Text credentialsId')
+    string(name: 'MYSQL_PASSWORD_CRED_ID', defaultValue: 'dba-prod-mysql-app-password', description: 'Jenkins Secret Text credentialsId')
+    string(name: 'JWT_SECRET_CRED_ID', defaultValue: 'dba-prod-jwt-secret', description: 'Jenkins Secret Text credentialsId')
+    string(name: 'AWS_ACCESS_KEY_ID_CRED_ID', defaultValue: 'dba-prod-aws-access-key-id', description: 'Jenkins Secret Text credentialsId')
+    string(name: 'AWS_SECRET_ACCESS_KEY_CRED_ID', defaultValue: 'dba-prod-aws-secret-access-key', description: 'Jenkins Secret Text credentialsId')
+
+    // Rollback Parameters
+    booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback to previous deployment')
+    string(name: 'ROLLBACK_TAG', defaultValue: '', description: 'Tag to rollback to (leave empty for previous)')
+  }
+
+  stages {
+    stage('Initialize') {
+      steps {
+        script {
+          env.BUILD_TAG = params.IMAGE_TAG?.trim() ? params.IMAGE_TAG.trim() : env.BUILD_NUMBER
+          env.IMAGE_REF = "${IMAGE_NAME}:${BUILD_TAG}"
+          env.IMAGE_PROD = "${IMAGE_NAME}:prod"
+
+          echo "========================================="
+          echo "DBA ALLD Backend Production Deployment"
+          echo "========================================="
+          echo "Build Tag: ${BUILD_TAG}"
+          echo "Image: ${IMAGE_REF}"
+          echo "Deploy Root: ${DEPLOY_ROOT}"
+          echo "========================================="
+        }
+      }
+    }
+
+    stage('Checkout Backend') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Prepare Deployment Folder') {
+      steps {
+        sh '''
+          set -eux
+          export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+          DEPLOY_ROOT="${DEPLOY_ROOT}"
+          mkdir -p "$DEPLOY_ROOT" "$DEPLOY_ROOT/data/mysql" "$DEPLOY_ROOT/initdb" "$DEPLOY_ROOT/backend-storage" "$DEPLOY_ROOT/backend-logs/archive"
+          docker network inspect traefik-public >/dev/null 2>&1 || docker network create traefik-public
+        '''
+      }
+    }
+
+    stage('Sync Deployment Files') {
+      steps {
+        sh '''
+          set -eux
+          DEPLOY_ROOT="${DEPLOY_ROOT}"
+          COMPOSE_FILE="${DEPLOY_ROOT}/docker-compose.backend.prod.yml"
+          cp "deployment/docker-compose.backend.prod.yml" "$COMPOSE_FILE"
+        '''
+      }
+    }
+
+    stage('Detect Change Type') {
+      steps {
+        script {
+          def prev = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT?.trim()
+          def curr = env.GIT_COMMIT?.trim()
+
+          if (!prev || !curr) {
+            env.BUILD_IMAGE = 'true'
+            echo 'No previous successful commit metadata; defaulting to image build.'
+          } else {
+            def changed = sh(
+              script: "git diff --name-only ${prev} ${curr}",
+              returnStdout: true
+            ).trim()
+            echo "Changed files:\n${changed}"
+
+            def buildNeeded = changed.split('\n').any { path ->
+              path.matches(/^(Dockerfile|pom\.xml|mvnw|\.mvn\/|src\/).*/)
+            }
+
+            env.BUILD_IMAGE = buildNeeded ? 'true' : 'false'
+          }
+
+          if (params.FORCE_IMAGE_BUILD) {
+            env.BUILD_IMAGE = 'true'
+          }
+
+          echo "Build needed: ${env.BUILD_IMAGE}"
+        }
+      }
+    }
+
+    stage('Build Docker Image') {
+      when {
+        expression { return env.BUILD_IMAGE == 'true' && !params.ROLLBACK }
+      }
+      steps {
+        echo "🔨 Building Docker image: ${IMAGE_REF}..."
+        sh '''
+          set -eux
+          export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+
+          # Build Docker image from Jenkins workspace (no backend folder needed)
+          docker build \
+            -t "${IMAGE_REF}" \
+            -t "${IMAGE_NAME}:prod" \
+            -t "${IMAGE_NAME}:latest" \
+            -f Dockerfile \
+            .
+
+          echo "✅ Docker image built: ${IMAGE_REF}"
+          docker images "${IMAGE_REF}" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
+        '''
+      }
+    }
+
+    stage('Run Unit Tests') {
+      when {
+        expression { return params.RUN_UNIT_TESTS }
+      }
+      steps {
+        echo 'Running unit tests...'
+        sh '''
+          set -eux
+          ./mvnw -q test -DskipTests=false
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+        }
+      }
+    }
+
+    stage('Database Backup') {
+      when {
+        expression { return params.BACKUP_BEFORE_DEPLOY && !params.ROLLBACK }
+      }
+      steps {
+        echo 'Creating database backup...'
+        withCredentials([
+          string(credentialsId: params.MYSQL_ROOT_PASSWORD_CRED_ID, variable: 'MYSQL_ROOT_PASSWORD_VAL')
+        ]) {
+          sh '''
+            set -eux
+            export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+            cd "$DEPLOY_ROOT"
+
+            BACKUP_DIR="$DEPLOY_ROOT/db-backup"
+            mkdir -p "$BACKUP_DIR"
+
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            BACKUP_FILE="$BACKUP_DIR/dba-prod-backup-$TIMESTAMP.sql"
+
+            # Get DB container name
+            DB_CONTAINER=$(docker ps --filter "name=dba-prod-db" --format "{{.Names}}")
+
+            if [ -n "$DB_CONTAINER" ]; then
+              # Backup database
+              docker exec "$DB_CONTAINER" mysqldump -u root -p"${MYSQL_ROOT_PASSWORD_VAL}" \
+                --databases "$MYSQL_DATABASE" > "$BACKUP_FILE"
+
+              # Compress backup
+              gzip "$BACKUP_FILE"
+
+              echo "✅ Database backup created: ${BACKUP_FILE}.gz"
+
+              # Cleanup old backups (keep last 7 days)
+              find "$BACKUP_DIR" -name "*.sql.gz" -mtime +7 -delete
+            else
+              echo "⚠️  Database container not found, skipping backup"
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Write Runtime Env File From Jenkins Credentials') {
+      steps {
+        withCredentials([
+          string(credentialsId: params.MYSQL_ROOT_PASSWORD_CRED_ID, variable: 'MYSQL_ROOT_PASSWORD_VAL'),
+          string(credentialsId: params.MYSQL_PASSWORD_CRED_ID, variable: 'MYSQL_PASSWORD_VAL'),
+          string(credentialsId: params.JWT_SECRET_CRED_ID, variable: 'JWT_SECRET_VAL'),
+          string(credentialsId: params.AWS_ACCESS_KEY_ID_CRED_ID, variable: 'AWS_ACCESS_KEY_ID_VAL'),
+          string(credentialsId: params.AWS_SECRET_ACCESS_KEY_CRED_ID, variable: 'AWS_SECRET_ACCESS_KEY_VAL')
+        ]) {
+          sh '''
+            set -e
+            : "${MYSQL_ROOT_PASSWORD_VAL:?missing MYSQL_ROOT_PASSWORD_VAL from Jenkins credentials}"
+            : "${MYSQL_PASSWORD_VAL:?missing MYSQL_PASSWORD_VAL from Jenkins credentials}"
+            : "${JWT_SECRET_VAL:?missing JWT_SECRET_VAL from Jenkins credentials}"
+            : "${AWS_ACCESS_KEY_ID_VAL:?missing AWS_ACCESS_KEY_ID_VAL from Jenkins credentials}"
+            : "${AWS_SECRET_ACCESS_KEY_VAL:?missing AWS_SECRET_ACCESS_KEY_VAL from Jenkins credentials}"
+
+            ENV_FILE="${DEPLOY_ROOT}/.env"
+            APP_UID="$(id -u)"
+            APP_GID="$(id -g)"
+            umask 077
+            cat > "$ENV_FILE" <<EOF2
+BACKEND_HOST=${BACKEND_HOST}
+TRAEFIK_ENTRYPOINT=${TRAEFIK_ENTRYPOINT}
+TRAEFIK_TLS=${TRAEFIK_TLS}
+
+TZ=${TZ}
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD_VAL}
+MYSQL_DATABASE=${MYSQL_DATABASE}
+MYSQL_USER=${MYSQL_USER}
+MYSQL_PASSWORD=${MYSQL_PASSWORD_VAL}
+
+JWT_SECRET=${JWT_SECRET_VAL}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID_VAL}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY_VAL}
+
+# CORS Configuration
+CORS_ENABLED=true
+CORS_ALLOWED_ORIGINS=https://dbaalld.thinkvalleysoftwares.in,https://dbaalld.org,https://www.dbaalld.org,https://localhost:5080,https://127.0.0.1:5080
+
+APP_LOG_DIR=/app/logs
+APP_UID=${APP_UID}
+APP_GID=${APP_GID}
+EOF2
+            chmod 600 "$ENV_FILE"
+          '''
+        }
+      }
+    }
+
+    stage('Ensure Image Available') {
+      when {
+        expression { return env.BUILD_IMAGE == 'false' || params.FORCE_IMAGE_BUILD }
+      }
+      steps {
+        echo 'Checking if Docker image exists...'
+        sh '''
+          set -eux
+
+          # Get the image tag from Jenkins environment
+          BUILD_TAG="${BUILD_NUMBER}"
+          IMAGE_NAME="dba/backend"
+          FULL_IMAGE_NAME="${IMAGE_NAME}:${BUILD_TAG}"
+
+          echo "Checking for image: $FULL_IMAGE_NAME"
+
+          # Check if image exists locally
+          if ! docker image inspect "$FULL_IMAGE_NAME" >/dev/null 2>&1; then
+            echo "⚠️  Image $FULL_IMAGE_NAME not found!"
+            echo ""
+            echo "This can happen when:"
+            echo "  - Build stage was skipped (no code changes detected)"
+            echo "  - Image was cleaned up by docker prune"
+            echo "  - Manual deployment without build"
+            echo ""
+            echo "🔨 Building image automatically from Jenkins workspace..."
+            echo ""
+
+            export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+
+            # Build with both specific tag and 'prod' tag
+            docker build \
+              -t "${FULL_IMAGE_NAME}" \
+              -t "${IMAGE_NAME}:prod" \
+              -f Dockerfile \
+              .
+
+            echo ""
+            echo "✅ Image built successfully: $FULL_IMAGE_NAME"
+            echo "✅ Also tagged as: ${IMAGE_NAME}:prod"
+          else
+            echo "✅ Image already exists: $FULL_IMAGE_NAME"
+          fi
+        '''
+      }
+    }
+
+    stage('Deploy Backend + DB') {
+      steps {
+        script {
+          def baseCmd = 'docker compose --project-name "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE"'
+          def services = params.RECREATE_DB ? 'db backend' : 'backend'
+          sh """
+          set -eux
+          export DOCKER_HOST="\${DOCKER_HOST:-unix:///run/user/\$(id -u)/docker.sock}"
+          DEPLOY_ROOT="${DEPLOY_ROOT}"
+          COMPOSE_PROJECT="${COMPOSE_PROJECT}"
+          COMPOSE_FILE="${DEPLOY_ROOT}/docker-compose.backend.prod.yml"
+          ENV_FILE="${DEPLOY_ROOT}/.env"
+          cd "\$DEPLOY_ROOT"
+
+          # Deploy services (--pull never removed, Ensure Image Available already built it)
+          ${baseCmd} up -d --force-recreate ${services}
+          ${baseCmd} ps
+          """
+        }
+      }
+    }
+
+    stage('Health Check') {
+      steps {
+        echo 'Waiting for backend to be healthy...'
+        script {
+          def maxRetries = 20
+          def retryInterval = 15 // seconds
+          def healthy = false
+
+	          for (int i = 0; i < maxRetries; i++) {
+	            sleep retryInterval
+	            def status = sh(
+	              script: '''
+	                set +e
+	                export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+	                docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo not_found
+	              ''',
+	              returnStdout: true
+	            ).trim()
+
+            echo "Health check attempt ${i+1}/${maxRetries}: ${status}"
+
+            if (status == 'healthy') {
+              healthy = true
+              break
+            }
+          }
+
+          if (!healthy) {
+            error "Backend failed to become healthy after ${maxRetries * retryInterval} seconds"
+          }
+
+          echo "✅ Backend is healthy"
+        }
+      }
+    }
+
+    stage('Post-Deployment Verification') {
+      steps {
+        echo 'Running post-deployment verification...'
+        sh '''
+          set -eux
+          export DOCKER_HOST="${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"
+
+          # Check container status
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "${CONTAINER_NAME}|${DB_CONTAINER_NAME}"
+
+          # Test backend endpoint
+          sleep 5
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:${BACKEND_PORT}/actuator/health || echo "⚠️  Health endpoint not responding yet"
+
+          # Check logs for errors
+          docker logs --tail 50 "$CONTAINER_NAME" | grep -i error || echo "✅ No errors in recent logs"
+
+          echo "✅ Post-deployment verification complete"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      echo 'Cleaning up workspace...'
+      cleanWs()
+    }
+    success {
+      echo '✅ Deployment successful!'
+      script {
+        def grafanaUrl = "http://${params.BACKEND_HOST}:5001"
+        def backendUrl = "http://${params.BACKEND_HOST}:${params.BACKEND_PORT}"
+
+        echo """
+        ╔══════════════════════════════════════════════════════════╗
+        ║     ✅ DEPLOYMENT SUCCESSFUL                             ║
+        ╚══════════════════════════════════════════════════════════╝
+
+        📦 Backend Image: ${IMAGE_REF}
+        🌐 Backend URL: ${backendUrl}/dba-alld
+        📊 Health Check: ${backendUrl}/dba-alld/actuator/health
+        📈 Grafana: ${grafanaUrl}
+
+        📋 Useful Commands:
+          # View logs
+          docker logs -f ${CONTAINER_NAME}
+
+          # Check status
+          docker ps | grep ${CONTAINER_NAME}
+
+          # Check startup time
+          docker logs ${CONTAINER_NAME} 2>&1 | grep "Started AlldApplication"
+        """
+      }
+    }
+    failure {
+      echo '❌ Deployment failed! Check console output for details.'
+      script {
+        echo "Rollback may be required. Last successful image: ${IMAGE_REF}"
+      }
+    }
+  }
+}

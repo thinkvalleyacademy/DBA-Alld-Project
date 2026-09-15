@@ -1,0 +1,455 @@
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    timeout(time: 30, unit: 'MINUTES')
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+  }
+
+  parameters {
+    choice(
+      name: 'DEPLOY_ENV',
+      choices: ['local', 'dev', 'prod'],
+      description: 'Target environment for deployment.'
+    )
+    booleanParam(
+      name: 'DEPLOY_BACKEND',
+      defaultValue: true,
+      description: 'Deploy backend application'
+    )
+    booleanParam(
+      name: 'DEPLOY_FRONTEND',
+      defaultValue: true,
+      description: 'Deploy frontend application'
+    )
+    booleanParam(
+      name: 'RUN_TESTS',
+      defaultValue: true,
+      description: 'Run E2E tests after deployment'
+    )
+    booleanParam(
+      name: 'SKIP_BUILD',
+      defaultValue: false,
+      description: 'Skip build if not needed'
+    )
+  }
+
+  environment {
+    // Deployment directories (configure in Jenkins > Configure System)
+    DEV_BACKEND_DIR = '/home/dbadev01/app-deployment-dev/backend'
+    DEV_FRONTEND_DIR = '/home/dbadev01/app-deployment-dev/frontend'
+    PROD_BACKEND_DIR = '/home/dbaprod01/app-deployment-prod/backend'
+    PROD_FRONTEND_DIR = '/home/dbaprod01/app-deployment-prod/frontend'
+    
+    // Deployment scripts (relative to deployment/)
+    DEV_COMPOSE = 'docker-compose.backend.dev.yml'
+    PROD_COMPOSE = 'docker-compose.backend.prod.yml'
+    
+    IMAGE_TAG = ''
+    SAFE_BRANCH = ''
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Set Image Tag') {
+      steps {
+        script {
+          env.IMAGE_TAG = sh(
+            script: "git rev-parse --short HEAD",
+            returnStdout: true
+          ).trim()
+
+          echo "Branch: ${env.BRANCH_NAME ?: 'dev'}"
+          echo "Image tag: ${env.IMAGE_TAG}"
+
+          env.SAFE_BRANCH = (env.BRANCH_NAME ?: 'dev').replaceAll('[^a-zA-Z0-9_.-]', '-')
+        }
+      }
+    }
+
+    stage('Pre-deployment Checks') {
+      steps {
+        echo '🔍 Running pre-deployment checks...'
+        sh '''
+          echo "Checking Docker..."
+          docker --version
+          docker ps
+          
+          echo "✅ Docker is running"
+        '''
+      }
+    }
+
+    stage('Build Backend') {
+      when {
+        expression { return !params.SKIP_BUILD && params.DEPLOY_BACKEND }
+      }
+      steps {
+        echo '🔨 Building backend application...'
+        sh './mvnw clean package -DskipTests -q'
+        archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true
+      }
+    }
+
+    stage('Build Frontend') {
+      when {
+        expression { return !params.SKIP_BUILD && params.DEPLOY_FRONTEND }
+      }
+      steps {
+        echo '🎨 Building frontend application...'
+        dir('../DBA-SOFTWARE') {
+          sh '''
+            npm install
+            npm run build
+          '''
+        }
+        archiveArtifacts artifacts: '../DBA-SOFTWARE/build/**', allowEmptyArchive: true
+      }
+    }
+
+    stage('Run Unit Tests') {
+      when {
+        expression { return !params.SKIP_BUILD }
+      }
+      steps {
+        echo '🧪 Running unit tests...'
+        sh './mvnw clean test -q'
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+        }
+      }
+    }
+
+    stage('Build Backend Docker Image') {
+      when {
+        expression { return params.DEPLOY_BACKEND && params.DEPLOY_ENV in ['dev', 'prod'] }
+      }
+      steps {
+        echo '🐳 Building backend Docker image...'
+        sh """
+          docker build -t dba/backend:${SAFE_BRANCH}-${IMAGE_TAG} .
+          docker tag dba/backend:${SAFE_BRANCH}-${IMAGE_TAG} dba/backend:${DEPLOY_ENV}
+        """
+      }
+    }
+
+    stage('Build Frontend Docker Image') {
+      when {
+        expression { return params.DEPLOY_FRONTEND && params.DEPLOY_ENV in ['dev', 'prod'] }
+      }
+      steps {
+        echo '🎨 Building frontend Docker image...'
+        dir('../DBA-SOFTWARE') {
+          sh """
+            docker build -t dba/frontend:${SAFE_BRANCH}-${IMAGE_TAG} .
+            docker tag dba/frontend:${SAFE_BRANCH}-${IMAGE_TAG} dba/frontend:${DEPLOY_ENV}
+          """
+        }
+      }
+    }
+
+    stage('Approve Prod Deploy') {
+      when {
+        expression { return params.DEPLOY_ENV == 'prod' }
+      }
+      steps {
+        input message: 'Deploy to PROD?', ok: 'Deploy', submitter: 'admin,devops'
+      }
+    }
+
+    stage('Deploy Backend to Local') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_ENV == 'local' }
+          expression { return params.DEPLOY_BACKEND }
+        }
+      }
+      steps {
+        echo '🚀 Deploying backend to local environment...'
+        script {
+          deployBackendToLocal()
+        }
+      }
+    }
+
+    stage('Deploy Frontend to Local') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_ENV == 'local' }
+          expression { return params.DEPLOY_FRONTEND }
+        }
+      }
+      steps {
+        echo '🎨 Deploying frontend to local environment...'
+        script {
+          deployFrontendToLocal()
+        }
+      }
+    }
+
+    stage('Deploy Backend to Server') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_ENV in ['dev', 'prod'] }
+          expression { return params.DEPLOY_BACKEND }
+        }
+      }
+      steps {
+        echo '🚀 Deploying backend to ${DEPLOY_ENV} environment...'
+        script {
+          deployBackendToServer()
+        }
+      }
+    }
+
+    stage('Deploy Frontend to Server') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_ENV in ['dev', 'prod'] }
+          expression { return params.DEPLOY_FRONTEND }
+        }
+      }
+      steps {
+        echo '🎨 Deploying frontend to ${DEPLOY_ENV} environment...'
+        script {
+          deployFrontendToServer()
+        }
+      }
+    }
+
+    stage('Run E2E Tests') {
+      when {
+        allOf {
+          expression { return params.RUN_TESTS }
+          expression { return params.DEPLOY_ENV == 'local' }
+          expression { return params.DEPLOY_FRONTEND && params.DEPLOY_BACKEND }
+        }
+      }
+      steps {
+        echo '🧪 Running E2E tests...'
+        dir('../DBA-SOFTWARE') {
+          sh '''
+            npx playwright install chromium
+            ./run-e2e-tests.sh local || true
+          '''
+        }
+      }
+      post {
+        always {
+          publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: '../DBA-SOFTWARE/playwright-report',
+            reportFiles: 'index.html',
+            reportName: 'E2E Test Report'
+          ])
+        }
+      }
+    }
+
+    stage('Health Check - Backend') {
+      when {
+        expression { return params.DEPLOY_BACKEND }
+      }
+      steps {
+        echo '🏥 Checking backend health...'
+        script {
+          if (params.DEPLOY_ENV == 'local') {
+            sh '''
+              if curl -s http://localhost:3081/dba-alld/actuator/health | grep -q "UP"; then
+                echo "✅ Backend healthy"
+              else
+                echo "⚠️ Backend not responding"
+              fi
+            '''
+          } else {
+            echo "Backend health check for ${DEPLOY_ENV} - Check server logs"
+          }
+        }
+      }
+    }
+
+    stage('Health Check - Frontend') {
+      when {
+        expression { return params.DEPLOY_FRONTEND }
+      }
+      steps {
+        echo '🏥 Checking frontend health...'
+        script {
+          if (params.DEPLOY_ENV == 'local') {
+            sh '''
+              if curl -s http://localhost:4000 > /dev/null; then
+                echo "✅ Frontend accessible"
+              else
+                echo "⚠️ Frontend not responding"
+              fi
+            '''
+          } else {
+            echo "Frontend health check for ${DEPLOY_ENV} - Check server logs"
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      echo '📊 Cleaning up workspace...'
+      cleanWs()
+    }
+    success {
+      def backendStatus = params.DEPLOY_BACKEND ? "✅ Backend deployed" : "⏭️ Backend skipped"
+      def frontendStatus = params.DEPLOY_FRONTEND ? "✅ Frontend deployed" : "⏭️ Frontend skipped"
+      echo "${backendStatus} | ${frontendStatus} | Deployment to ${params.DEPLOY_ENV} completed successfully!"
+    }
+    failure {
+      echo "❌ Deployment to ${params.DEPLOY_ENV} failed! Check console output."
+    }
+  }
+}
+
+// Backend Deployment Functions
+
+def deployBackendToLocal() {
+  echo "Deploying backend to local environment..."
+  
+  sh '''
+    # Stop existing backend
+    echo "Stopping existing backend..."
+    lsof -ti :3081 | xargs kill -9 2>/dev/null || true
+    
+    # Start backend
+    echo "Starting backend on port 3081..."
+    nohup java -jar target/*.jar \\
+        --spring.datasource.url=jdbc:mysql://localhost:3307/dba \\
+        --spring.datasource.username=rwroot \\
+        --spring.datasource.password=root \\
+        --spring.profiles.active=local \\
+        --server.port=3081 > backend-deploy.log 2>&1 &
+    
+    # Wait for backend
+    echo "Waiting for backend to start (20s)..."
+    sleep 20
+    
+    # Verify backend
+    if curl -s http://localhost:3081/dba-alld/actuator/health | grep -q "UP"; then
+      echo "✅ Backend started successfully"
+    else
+      echo "❌ Backend failed to start"
+      exit 1
+    fi
+    
+    echo "✅ Backend deployment complete"
+  '''
+}
+
+def deployFrontendToLocal() {
+  echo "Deploying frontend to local environment..."
+  
+  sh '''
+    # Stop existing frontend
+    echo "Stopping existing frontend..."
+    lsof -ti :4000 | xargs kill -9 2>/dev/null || true
+    
+    # Start frontend
+    echo "Starting frontend on port 4000..."
+    cd ../DBA-SOFTWARE
+    PORT=4000 nohup npm start > frontend-deploy.log 2>&1 &
+    
+    # Wait for frontend
+    echo "Waiting for frontend to start (15s)..."
+    sleep 15
+    
+    # Verify frontend
+    if curl -s http://localhost:4000 > /dev/null; then
+      echo "✅ Frontend started successfully"
+    else
+      echo "❌ Frontend failed to start"
+      exit 1
+    fi
+    
+    echo "✅ Frontend deployment complete"
+  '''
+}
+
+def deployBackendToServer() {
+  echo "Deploying backend to ${params.DEPLOY_ENV} environment..."
+  
+  script {
+    def envName = params.DEPLOY_ENV
+    
+    // Get deployment directory based on environment
+    def deployDir = (envName == 'dev') ? env.DEV_BACKEND_DIR : env.PROD_BACKEND_DIR
+    def composeFile = (envName == 'dev') ? env.DEV_COMPOSE : env.PROD_COMPOSE
+    
+    if (!deployDir) {
+      error "Missing deployment directory for ${envName}. Configure in Jenkins environment variables."
+    }
+    
+    sh """
+      echo "Deploying backend to: ${deployDir}"
+      
+      // Sync files to server
+      rsync -av --delete \\
+        --exclude '.git/' \\
+        --exclude 'node_modules/' \\
+        --exclude 'target/' \\
+        ./ ${deployDir}/
+      
+      // Deploy using existing compose file
+      cd ${deployDir}/../
+      docker compose -f ${composeFile} up -d backend
+      
+      echo "Waiting for backend to start..."
+      sleep 30
+      
+      echo "✅ Backend deployment to ${envName} complete"
+    """
+  }
+}
+
+def deployFrontendToServer() {
+  echo "Deploying frontend to ${params.DEPLOY_ENV} environment..."
+  
+  script {
+    def envName = params.DEPLOY_ENV
+    
+    // Get deployment directory based on environment
+    def deployDir = (envName == 'dev') ? env.DEV_FRONTEND_DIR : env.PROD_FRONTEND_DIR
+    
+    if (!deployDir) {
+      error "Missing frontend deployment directory for ${envName}. Configure in Jenkins environment variables."
+    }
+    
+    sh """
+      echo "Deploying frontend to: ${deployDir}"
+      
+      // Sync frontend files
+      rsync -av --delete \\
+        --exclude 'node_modules/' \\
+        --exclude 'build/' \\
+        ../DBA-SOFTWARE/ ${deployDir}/
+      
+      // Build and deploy frontend
+      cd ${deployDir}
+      docker build -t dba/frontend:${envName} .
+      docker compose up -d frontend
+      
+      echo "Waiting for frontend to start..."
+      sleep 30
+      
+      echo "✅ Frontend deployment to ${envName} complete"
+    """
+  }
+}

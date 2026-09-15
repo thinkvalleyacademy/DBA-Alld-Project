@@ -1,0 +1,167 @@
+POR00008811
+
+Duration: 17 months
+Valid till: End of 30 Apr 2026
+Total: Rs. 425.00
+
+Subscription For - Mar 2026 - Jul 2027 -> is wrong
+
+
+----
+In prod:
+Order ID 2026032314862431 Delet Karna hai chek karne ke bad
+aur Order ID 2026032358952246 Delet Karna hai
+
+Jo us din delet hone ka issue bheja POR002792 bhi old wale software me hai isme nahi hai
+
+select * from members where member_id = 'POR00000977' \G  -> not showing in UI but available in DB.
+    same with : POR00000733
+                POR00002792 - type 3 
+                POR00000002 - coming in UI
+
+General and Lifemember can be in Welfare. But there name will dispay in GM/LM
+
+
+https://dev.thinkvalleysoftwares.in/dba-alld/api/v1/members/addWelfare
+{"memberId":"POR00003212","registrationNo":"","mobile":"9455596932","amount":500,"userPhone":"7388881114","monthsNo":1}
+
+gm_lm_member_type -1-GM, 2-LM , 3- WM
+
+In dev data;
+mysql> select member_id from members where gm_lm_member_type = 3 \G ;
+*************************** 1. row ***************************
+member_id: POR00003212
+*************************** 2. row ***************************
+member_id: POR00003215
+2 rows in set (0.01 sec)
+
+
+select member_id,gm_lm_member_type from members where member_id in ();
+
+
+https://dev.thinkvalleysoftwares.in/member/list
+Registration No - should be COP
+Also on recipt https://dev.thinkvalleysoftwares.in/receipt/POR00013018?list=true&receiptId=47513
+    Reg. Type: C.O.P No. - REG154
+
+
+1. Log for each POST call
+2. Revert as per dev to prod for WM 
+3. new column -> for WM
+
+drwxr-xr-x 10 dbadev01 dbadev01     4096 Mar 23 13:50 app-deployment-prod
+drwxr-xr-x 12 dbadev01 dbadev01     4096 Mar 23 13:51 app-deployment-dev
+
+Backup:
+docker exec dba-prod-db  mysqldump -u root -p'root' dba > dba_backup_$(date +%F_%H-%M).sql
+docker exec dba-dev-db  mysqldump -u root -p'root' dba > dba_backup_$(date +%F_%H-%M).sql
+
+SQL shell;
+docker exec -it dba-prod-db mysql -u root -p'root'
+docker exec -it dba-dev-db mysql -u root -p'root'
+
+
+POR00008965
+POR00004743
+
+
+POR00000487
+Expiry Date :	28-11-2024
+
+Sr. No.	Subscription For	Validity Till	Total Amount
+1	Dec 2024 - Feb 2028	29-02-2028	₹ 600
+
+
+----
+
+POR00000006
+	Expiry Date :	31-03-2022
+
+Subscription requested 
+
+Duration: 52 months
+Valid till: End of 31 Jul 2026
+Total: Rs. 1190.00
+
+https://dev.thinkvalleysoftwares.in/dba-alld/api/v1/renewSubscription/renew
+{"memberID":"POR00000006","amount":1190,"monthsNo":52,"userPhone":"7388881114"}
+
+response 
+{
+    "status": 200,
+    "message": "Subscription renewed successfully",
+    "data": {
+        "subscriptionEntry": {
+            "id": 47532,
+            "memberId": "6",
+            "amount": 1190,
+            "txnType": "RENEWAL",
+            "txnDate": "2026-03-23T23:14:20.654319561",
+            "noOfMonth": 52,
+            "createdBy": "7388881114",
+            "createdDate": "2026-03-23T23:14:20.654349058",
+            "status": "ACTIVE",
+            "orderId": 2026032388333123,
+            "expiryDate": "2030-06-30"
+        },
+        "member": {
+            "id": 6,
+            "memberId": "POR00000006",
+            "memberType": "Old",
+            "name": "RADHEY KRISHNA",
+            "gender": "Male",
+            "relation": "",
+            "guardianName": "LATE KASHI PRASAD ",
+            "dob": "1949-10-01",
+            "bloodGroup": "A+",
+            "registrationType": "C.O.P No.",
+            "registrationNo": "123764",
+            "enNo": "5029/2010",
+            "address": "MIG 144 GOVINDPUR COLONY PS. TELIYARGANJ PRAYAGRAJ ",
+            "city": "PRAYAGRAJ",
+            "zip": "211004",
+            "state": "Uttar Pradesh",
+            "ksAddress": "12 KANBHA D M CAMPUS PRAYAGRAJ",
+            "mobile": "9839545806",
+            "email": "",
+            "nomineeName": "MEENA KUMARI JAISWAL ",
+            "nomineeMobile": "9936345766",
+            "membershipDate": null,
+            "expiryDate": "2030-06-30",
+            "bcOfUpType": "ID",
+            "bcOfUpPhoto": "upload/bc_of_up_photo/47234138162fdfebe633b3e6d69a0ae5.jpg",
+            "voter": "yes",
+            "affidavite": "upload/affidavit/7cb1603d0e1c19ad1611cd98a19bff4c.jpg",
+            "photo": "upload/photos/1541226860.jpg",
+            "qrcode": "upload/qrcode/WXXMS6WNL3Q0JBS7RBFU1MUSE12YOE7L.png",
+            "qrcodeDigit": "WXXMS6WNL3Q0JBS7RBFU1MUSE12YOE7L",
+            "gmLmMemberType": 1,
+            "isWm": false,
+            "createdDate": "2018-11-03T00:00:00",
+            "createdBy": "7355972109",
+            "updatedDate": "2026-03-23T23:14:20.654007535",
+            "updatedBy": "7388881114",
+            "status": "ACTIVE",
+            "ewalletBalance": 0.00,
+            "designation": "0"
+        }
+    }
+}
+
+
+Sr. No.	Subscription For	Validity Till	Total Amount
+1	Apr 2022 - Jun 2030	30-06-2030	₹ 1190
+
+
+Here as per backend response expiryDate date should be old Expiry Date :	31-03-2022 + 52 month
+
+
+Expiry Date :	28-03-2025
+Duration: 12 months
+Valid till: End of 31 Mar 2026
+Total: Rs. 300.00
+
+
+Sr. No.	Subscription For	Validity Till	Total Amount
+1	Apr 2025 - Mar 2026	31-03-2026	₹ 300
+This is a Computer Generated Invoice.
