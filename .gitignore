@@ -1,0 +1,4 @@
+# SSH keys / cloud credentials -- never commit these
+OCS-server/
+*.pem
+*.key

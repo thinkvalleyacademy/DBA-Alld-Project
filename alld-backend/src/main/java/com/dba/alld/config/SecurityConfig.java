@@ -80,7 +80,8 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(WHITE_LIST_URLS).permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/v1/**").authenticated()
+                        .anyRequest().permitAll()
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
