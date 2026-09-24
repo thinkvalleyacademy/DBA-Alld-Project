@@ -3,7 +3,7 @@ import apiService from "../../../components/apiService";
 import publicApiService from "../../../components/publicApiService";
 
 const buildImageUrl = (notice) => {
-  const baseUrl = notice.imageUrl || (notice.imagePath ? `/dba-alld/files/${notice.imagePath}` : "");
+  const baseUrl = notice.imageUrl || (notice.imagePath ? `/files/${notice.imagePath}` : "");
   if (!baseUrl) return "";
   const version = notice.cacheVersion || "";
   return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;

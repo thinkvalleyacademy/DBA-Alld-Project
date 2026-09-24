@@ -55,10 +55,10 @@ api.interceptors.response.use(
     // List of public endpoints that don't require authentication
     // Include both GET and POST endpoints
     const publicEndpoints = [
-      '/dba-alld/api/v1/members/search',        // GET endpoint
-      '/dba-alld/api/v1/members/member',        // POST endpoint
-      '/dba-alld/api/v1/members/list',           // GET endpoint
-      '/dba-alld/api/v1/members/search-gm-lm'    // GET endpoint
+      '/api/v1/members/search',        // GET endpoint
+      '/api/v1/members/member',        // POST endpoint
+      '/api/v1/members/list',           // GET endpoint
+      '/api/v1/members/search-gm-lm'    // GET endpoint
     ];
     
     // Check if this is a public endpoint (check if URL contains any of the public endpoints)

@@ -40,7 +40,7 @@ public class S3Config {
             credentialsProvider = DefaultCredentialsProvider.create();
         }
 
-        S3Client.Builder builder = S3Client.builder()
+        var builder = S3Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(credentialsProvider);
 
