@@ -2,3 +2,7 @@
 OCS-server/
 *.pem
 *.key
+
+# Database dumps -- never commit production data
+db-backup/
+*.sql
