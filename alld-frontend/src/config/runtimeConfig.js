@@ -1,6 +1,7 @@
 const config = window.APP_CONFIG || {};
 
-export const API_URL = config.API_URL || "/api";
+export const API_URL =
+  typeof config.API_URL === "string" ? config.API_URL : "/api";
 
 export const FILE_SERVER_URL =
   config.FILE_SERVER_URL || "";

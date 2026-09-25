@@ -1,0 +1,14 @@
+# SSH keys / cloud credentials -- never commit these
+OCS-server/
+*.pem
+*.key
+
+# Database dumps -- never commit production data
+db-backup/
+*.sql
+server-downloaded-files/
+filtered-uploads/
+
+# Frontend build output bundled into the backend jar at build time --
+# regenerated each build, not source
+alld-backend/src/main/resources/static/

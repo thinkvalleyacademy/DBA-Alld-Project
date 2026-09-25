@@ -14,27 +14,21 @@ export const getFileServerBaseUrl = () => {
 
   if (explicit) {
     const normalized = stripTrailingSlashes(explicit);
-    return normalized || "/dba-alld/files";
+    return normalized || "/files";
   }
 
   const apiUrlRaw = (config.API_URL || "").trim();
 
   if (!apiUrlRaw || apiUrlRaw === "/" || apiUrlRaw === "/api") {
-    return "/dba-alld/files";
+    return "/files";
   }
 
   const apiUrl = stripTrailingSlashes(apiUrlRaw);
 
   if (apiUrl.endsWith("/api")) {
     const prefix = apiUrl.slice(0, -4);
-    return `${prefix || ""}/dba-alld/files`;
+    return `${prefix || ""}/files`;
   }
 
-  if (apiUrl.includes("/dba-alld")) {
-    const idx = apiUrl.indexOf("/dba-alld");
-    const root = apiUrl.slice(0, idx);
-    return `${root}/dba-alld/files`;
-  }
-
-  return `${apiUrl}/dba-alld/files`;
+  return `${apiUrl}/files`;
 };

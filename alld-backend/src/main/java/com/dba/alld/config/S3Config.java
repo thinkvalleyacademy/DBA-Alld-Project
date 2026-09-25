@@ -10,6 +10,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
+import java.net.URI;
+
 @Configuration
 public class S3Config {
 
@@ -22,6 +24,12 @@ public class S3Config {
     @Value("${aws.region:ap-south-1}")
     private String region;
 
+    // Optional -- set to point at an S3-compatible endpoint (e.g. OCI Object
+    // Storage) instead of real AWS. Leave blank for real AWS (unchanged
+    // behavior for existing deployments).
+    @Value("${aws.s3.endpoint:}")
+    private String endpointOverride;
+
     @Bean(destroyMethod = "close")
     public S3Client s3Client() {
         AwsCredentialsProvider credentialsProvider;
@@ -32,10 +40,17 @@ public class S3Config {
             credentialsProvider = DefaultCredentialsProvider.create();
         }
 
-        return S3Client.builder()
+        var builder = S3Client.builder()
                 .region(Region.of(region))
-                .credentialsProvider(credentialsProvider)
-                .build();
+                .credentialsProvider(credentialsProvider);
+
+        if (endpointOverride != null && !endpointOverride.trim().isEmpty()) {
+            builder = builder
+                    .endpointOverride(URI.create(endpointOverride.trim()))
+                    .forcePathStyle(true);
+        }
+
+        return builder.build();
     }
 
     private boolean isPresentCredential(String value) {

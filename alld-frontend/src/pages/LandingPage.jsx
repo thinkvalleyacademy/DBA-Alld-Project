@@ -35,11 +35,7 @@ const buildMemberPhotoUrl = (photoPath) => {
 
   try {
     if (photoPath.startsWith("http://") || photoPath.startsWith("https://")) {
-      const parsed = new URL(photoPath);
-      if (parsed.pathname.startsWith("/files/")) {
-        parsed.pathname = `/dba-alld${parsed.pathname}`;
-      }
-      return parsed.toString();
+      return photoPath;
     }
   } catch (e) {
     return null;
@@ -53,9 +49,9 @@ const buildMemberPhotoUrl = (photoPath) => {
   }
 
   if (path.startsWith("files/")) {
-    return toAbsoluteApiUrl(`/dba-alld/${path}`);
+    return toAbsoluteApiUrl(`/${path}`);
   }
-  return toAbsoluteApiUrl(`/dba-alld/files/${path}`);
+  return toAbsoluteApiUrl(`/files/${path}`);
 };
 
 const fetchPhoto = async (photoPath) => {
@@ -203,7 +199,7 @@ const LandingPage = () => {
 
         const slides = notices
           .map((notice) => {
-            const rawSrc = notice.imageUrl || (notice.imagePath ? `/dba-alld/files/${notice.imagePath}` : null);
+            const rawSrc = notice.imageUrl || (notice.imagePath ? `/files/${notice.imagePath}` : null);
             const baseSrc = resolveNoticeImageUrl(rawSrc);
             if (!baseSrc) return null;
             const src = `${baseSrc}${baseSrc.includes("?") ? "&" : "?"}v=${encodeURIComponent(notice.cacheVersion || "")}`;

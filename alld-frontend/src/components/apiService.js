@@ -116,17 +116,17 @@ const apiService = {
   // Duplicate Members Management
   getDuplicateMembers: (mobileFilter) => {
     const params = mobileFilter ? { mobile: mobileFilter } : {};
-    return api.get('/dba-alld/api/v1/members/duplicates', { params });
+    return api.get('/api/v1/members/duplicates', { params });
   },
 
   updateMemberStatus: (memberId, newStatus) => {
-    return api.put(`/dba-alld/api/v1/members/${memberId}/status`, {
+    return api.put(`/api/v1/members/${memberId}/status`, {
       newStatus,
     });
   },
 
   bulkUpdateMemberStatus: (memberIds, newStatus) => {
-    return api.put('/dba-alld/api/v1/members/bulk-status', {
+    return api.put('/api/v1/members/bulk-status', {
       memberIds,
       newStatus,
     });
